@@ -10,7 +10,7 @@ from pathlib import Path
 
 import google.generativeai as genai
 
-MODEL = "gemini-2.0-flash"
+MODEL = "gemini-2.5-flash-lite"
 PROMPT_PATH = Path(__file__).parent / "prompts" / "extract.txt"
 
 
