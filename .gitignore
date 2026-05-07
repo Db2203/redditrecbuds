@@ -4,6 +4,7 @@ __pycache__/
 venv/
 .env
 .streamlit/secrets.toml
+groq_api_key.txt
 *.duckdb
 *.duckdb-wal
 *.duckdb-tmp
