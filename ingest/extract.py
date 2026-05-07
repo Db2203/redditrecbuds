@@ -14,7 +14,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from lib.db import connect
 from lib.secrets import get as get_secret
-from llm.groq_extract import make_client, load_prompt, extract
 
 MIN_COMMENT_LEN = 80
 
@@ -42,7 +41,7 @@ def _row_from_extraction(comment_id, item, now):
     )
 
 
-def get_pending(con, limit=None):
+def get_pending(con, limit=None, subreddit=None):
     sql = """
         SELECT c.id, c.body, p.title
         FROM comments c
@@ -54,9 +53,12 @@ def get_pending(con, limit=None):
               SELECT 1 FROM pull_checkpoints cp
               WHERE cp.source = 'extract:' || c.id AND cp.finished
           )
-        ORDER BY LENGTH(c.body) DESC
     """
     params = [MIN_COMMENT_LEN]
+    if subreddit:
+        sql += " AND c.subreddit = ?"
+        params.append(subreddit)
+    sql += " ORDER BY LENGTH(c.body) DESC"
     if limit:
         sql += " LIMIT ?"
         params.append(limit)
@@ -67,15 +69,26 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--workers", type=int, default=6)
+    parser.add_argument("--subreddit", default=None,
+                        help="restrict to one subreddit, e.g. Earbuds")
+    parser.add_argument("--provider", choices=["groq", "gemini"], default="groq")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
     con = connect()
-    client = make_client(get_secret("GROQ_API_KEY"))
+
+    if args.provider == "gemini":
+        from llm.gemini_extract import make_client, load_prompt, extract
+        key = get_secret("GEMINI_API_KEY")
+    else:
+        from llm.groq_extract import make_client, load_prompt, extract
+        key = get_secret("GROQ_API_KEY")
+
+    client = make_client(key)
     prompt = load_prompt()
 
-    pending = get_pending(con, args.limit)
-    print(f"{len(pending)} comments pending; using {args.workers} workers")
+    pending = get_pending(con, args.limit, subreddit=args.subreddit)
+    print(f"{len(pending)} comments pending ({args.provider}); using {args.workers} workers")
     if args.dry_run or not pending:
         return
 
