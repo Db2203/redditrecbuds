@@ -1,5 +1,5 @@
-# audiorec
+# redditrecbuds
 
-small project that pulls audio gear recommendations from a few audio subreddits, extracts product mentions out of comments, and lets you browse them or ask questions in plain english.
+pulls wireless earbud recommendations from a few audio subreddits (via the arctic shift archive since reddit closed self-service api access in late 2025), extracts product mentions and sentiment with an llm, and ranks them.
 
-work in progress. more once it's actually working.
+work in progress. inspired by redditrecs.com but with my own scoring and a few extra views.
