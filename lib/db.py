@@ -36,6 +36,21 @@ CREATE TABLE IF NOT EXISTS pull_checkpoints (
     last_after BIGINT,
     finished BOOLEAN DEFAULT FALSE
 );
+
+CREATE TABLE IF NOT EXISTS mentions (
+    mention_id TEXT PRIMARY KEY,
+    comment_id TEXT,
+    brand TEXT,
+    model TEXT,
+    form_factor TEXT,
+    connection TEXT,
+    price_mentioned INTEGER,
+    use_case TEXT,
+    sound_signature TEXT,
+    sentiment TEXT,
+    one_line_reason TEXT,
+    extracted_at BIGINT
+);
 """
 
 
