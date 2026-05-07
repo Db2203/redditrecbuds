@@ -169,7 +169,7 @@ with left:
     for body, comment_score, link_id, reason in top_quotes(brand, model, "positive"):
         snippet = (body or "")[:400]
         st.markdown(f"> {snippet}{'…' if len(body or '') > 400 else ''}")
-        st.caption(f"[{comment_score} pts] · [thread](https://reddit.com/comments/{link_id})")
+        st.caption(f"[{comment_score} pts] | [thread](https://reddit.com/comments/{link_id})")
         st.markdown("---")
 
 with right:
@@ -180,7 +180,7 @@ with right:
     for body, comment_score, link_id, reason in neg_quotes:
         snippet = (body or "")[:400]
         st.markdown(f"> {snippet}{'…' if len(body or '') > 400 else ''}")
-        st.caption(f"[{comment_score} pts] · [thread](https://reddit.com/comments/{link_id})")
+        st.caption(f"[{comment_score} pts] | [thread](https://reddit.com/comments/{link_id})")
         st.markdown("---")
 
 st.divider()

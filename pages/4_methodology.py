@@ -46,7 +46,7 @@ st.markdown(
    (≥ 80 chars), skipping AutoModerator and `[deleted]` / `[removed]` content.
 
 3. **extracted** product mentions with llama 3.1 8b (via groq's free tier).
-   the model returns, per comment, a json list of every wireless earbud mentioned —
+   the model returns, per comment, a json list of every wireless earbud mentioned -
    brand, specific model, sentiment (positive / neutral / negative), price if mentioned,
    use case, sound-signature words, and a one-line reason.
    the prompt has three few-shot examples and is strict about ignoring over-ear
@@ -57,20 +57,20 @@ st.markdown(
    i keep the user's majority sentiment as a single vote.
 
 5. **spread imprecise references**. when someone says "Galaxy Buds" with no version,
-   i can't drop the data — but i shouldn't pin it on one specific buds model either.
+   i can't drop the data - but i shouldn't pin it on one specific buds model either.
    i spread that user's vote across all known galaxy buds models, weighted by each
    model's overall mention count (more popular = more likely the one being referred to).
 
 6. **scored**. ranking is a weighted combination of two signals:
 
-   - **wilson lower bound at 95% confidence** — the same statistic reddit's "best"
+   - **wilson lower bound at 95% confidence** - the same statistic reddit's "best"
      comment sort uses. punishes products with a great ratio but a tiny sample.
      a product with 1 positive / 0 negative votes scores ~0.21, not 1.00.
 
-   - **log-normalized positive volume** — sheer count of positive votes,
+   - **log-normalized positive volume** - sheer count of positive votes,
      log-transformed and normalized so the most-mentioned product is 1.0.
 
-   final score = `0.75 × log_volume + 0.25 × wilson`. the 75:25 weighting follows
+   final score = `0.75 * log_volume + 0.25 * wilson`. the 75:25 weighting follows
    redditrecs.com's reasoning: *sheer volume of approval is more telling than
    a few isolated rave reviews.* i kept the weighting and swapped their
    normalized log-ratio term for the more rigorous wilson bound.
@@ -81,7 +81,7 @@ st.markdown(
 n = pos + neg
 p = pos / n
 z = 1.96   # 95% confidence
-wilson_lower = ( p + z²/(2n) − z·sqrt(p(1−p)/n + z²/(4n²)) ) / (1 + z²/n)
+wilson_lower = ( p + z^2/(2n) - z*sqrt(p(1-p)/n + z^2/(4n^2)) ) / (1 + z^2/n)
 ```
 
 implemented in `lib/scoring.py`.

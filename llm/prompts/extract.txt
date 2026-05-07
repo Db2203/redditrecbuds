@@ -17,7 +17,7 @@ Rules:
 
 EXAMPLE 1
 Title: Best wireless earbuds for working out under $100?
-Comment: I'd go with the Galaxy Buds FE. Got mine for $80 on sale, IPX2, decent ANC, they don't fall out when running. Avoid the Pixel Buds A — fit is terrible for exercise.
+Comment: I'd go with the Galaxy Buds FE. Got mine for $80 on sale, IPX2, decent ANC, they don't fall out when running. Avoid the Pixel Buds A - fit is terrible for exercise.
 Output: {"products": [
 {"brand": "Samsung", "model": "Galaxy Buds FE", "sentiment": "positive", "price_mentioned": 80, "use_case": "workout", "sound_signature": null, "one_line_reason": "stays in during runs, IPX2, decent ANC for the price"},
 {"brand": "Google", "model": "Pixel Buds A", "sentiment": "negative", "price_mentioned": null, "use_case": "workout", "sound_signature": null, "one_line_reason": "fit is terrible for exercise"}

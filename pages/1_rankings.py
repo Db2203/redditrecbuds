@@ -71,13 +71,13 @@ for i, row in top.iterrows():
             st.markdown(f"### #{i + 1}  {row['brand']} {row['model']}")
             ratio = row["pos"] / max(row["pos"] + row["neg"], 1)
             st.caption(
-                f"{row['pos']:.1f} positive · {row['neg']:.1f} negative · "
-                f"{row['neu']:.1f} neutral · {ratio:.0%} positive · "
+                f"{row['pos']:.1f} positive | {row['neg']:.1f} negative | "
+                f"{row['neu']:.1f} neutral | {ratio:.0%} positive | "
                 f"{int(row['users'])} unique voters"
             )
         with score:
             st.metric("score", f"{row['combined']:.3f}")
-            st.caption(f"wilson {row['wilson']:.2f} · vol {row['log_vol']:.2f}")
+            st.caption(f"wilson {row['wilson']:.2f} | vol {row['log_vol']:.2f}")
 
         pos_samples = sample_comments(row["brand"], row["model"], "positive")
         neg_samples = sample_comments(row["brand"], row["model"], "negative")
@@ -90,7 +90,7 @@ for i, row in top.iterrows():
                     st.markdown(f"> {snippet}{'…' if len(body or '') > 240 else ''}")
                     st.caption(
                         f"[{score} pts]"
-                        f" · [thread](https://reddit.com/comments/{link_id})"
+                        f" | [thread](https://reddit.com/comments/{link_id})"
                     )
             with right:
                 st.markdown("**what people don't**")
@@ -99,5 +99,5 @@ for i, row in top.iterrows():
                     st.markdown(f"> {snippet}{'…' if len(body or '') > 240 else ''}")
                     st.caption(
                         f"[{score} pts]"
-                        f" · [thread](https://reddit.com/comments/{link_id})"
+                        f" | [thread](https://reddit.com/comments/{link_id})"
                     )

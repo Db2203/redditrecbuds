@@ -41,10 +41,10 @@ st.divider()
 
 st.subheader("pages")
 st.markdown(
-    "- **rankings** — top earbuds, ranked\n"
-    "- **product** — drill into one product\n"
-    "- **compare** — head-to-head between two\n"
-    "- **methodology** — how the ranking actually works (and what it doesn't tell you)"
+    "- **rankings** - top earbuds, ranked\n"
+    "- **product** - drill into one product\n"
+    "- **compare** - head-to-head between two\n"
+    "- **methodology** - how the ranking actually works (and what it doesn't tell you)"
 )
 
 st.divider()

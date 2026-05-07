@@ -14,7 +14,7 @@ def main():
     n_mentions = con.execute("SELECT COUNT(*) FROM mentions").fetchone()[0]
     print(f"{n_mentions:,} mentions in db")
     if n_mentions == 0:
-        print("no mentions yet — run ingest/extract.py first")
+        print("no mentions yet - run ingest/extract.py first")
         return
 
     n_votes = rebuild_votes(con)

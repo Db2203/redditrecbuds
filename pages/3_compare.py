@@ -107,14 +107,14 @@ def panel(col, brand, model, summary_, score):
         st.subheader(f"{brand} {model}")
         st.metric("score", f"{score:.3f}")
         st.caption(
-            f"{summary_['pos']:.1f} positive · {summary_['neg']:.1f} negative · "
-            f"{summary_['neu']:.1f} neutral · {int(summary_['users'])} users"
+            f"{summary_['pos']:.1f} positive | {summary_['neg']:.1f} negative | "
+            f"{summary_['neu']:.1f} neutral | {int(summary_['users'])} users"
         )
 
         st.markdown("**likes**")
         for body, sc, link_id in quotes(brand, model, "positive"):
             st.markdown(f"> {(body or '')[:280]}{'…' if len(body or '') > 280 else ''}")
-            st.caption(f"[{sc} pts] · [thread](https://reddit.com/comments/{link_id})")
+            st.caption(f"[{sc} pts] | [thread](https://reddit.com/comments/{link_id})")
 
         st.markdown("**gripes**")
         nq = quotes(brand, model, "negative")
@@ -122,7 +122,7 @@ def panel(col, brand, model, summary_, score):
             st.caption("none on file")
         for body, sc, link_id in nq:
             st.markdown(f"> {(body or '')[:280]}{'…' if len(body or '') > 280 else ''}")
-            st.caption(f"[{sc} pts] · [thread](https://reddit.com/comments/{link_id})")
+            st.caption(f"[{sc} pts] | [thread](https://reddit.com/comments/{link_id})")
 
 
 panel(left, a_brand, a_model, a_sum, a_score)
