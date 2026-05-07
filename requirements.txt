@@ -1,4 +1,6 @@
 streamlit>=1.30
+streamlit-shadcn-ui>=0.1
+streamlit-extras>=0.4
 duckdb>=1.0
 plotly>=5.18
 pandas>=2.0

@@ -9,9 +9,15 @@ import streamlit as st
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from lib.db import connect
 from lib.scoring import combined_score, normalize_log_volume, wilson_lower
+from lib.ui import apply_theme
 
-st.set_page_config(page_title="product", layout="wide")
-st.title("product detail")
+st.set_page_config(page_title="product", layout="wide", initial_sidebar_state="collapsed")
+apply_theme()
+st.markdown(
+    "<div style='font-size:36px; font-weight:800; letter-spacing:-1px;'>product detail</div>"
+    "<div style='color:#8c8c8c; font-size:15px; margin-bottom:24px;'>drill into one earbud's reception over time.</div>",
+    unsafe_allow_html=True,
+)
 
 con = connect()
 

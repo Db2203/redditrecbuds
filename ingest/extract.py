@@ -19,7 +19,8 @@ from lib.db import connect
 from lib.secrets import get as get_secret
 
 MIN_COMMENT_LEN = 80
-GEMINI_PER_KEY_INTERVAL = 4.5  # 15 rpm per key + small buffer
+GEMINI_PER_KEY_INTERVAL = 4.5    # gemini: 15 rpm per key + buffer
+CEREBRAS_PER_KEY_INTERVAL = 2.1  # cerebras: 30 rpm per key + buffer
 
 MENTION_FIELDS = (
     "mention_id", "comment_id", "brand", "model",
@@ -69,9 +70,8 @@ def get_pending(con, limit=None, subreddit=None):
     return con.execute(sql, params).fetchall()
 
 
-def run_gemini_pool(pool, prompt, pending, write_result, log_progress):
-    from llm.gemini_extract import extract as gemini_extract
-
+def run_paced_pool(extract_fn, per_key_interval, pool, prompt, pending,
+                   write_result, log_progress):
     work_q = queue.Queue()
     for item in pending:
         work_q.put(item)
@@ -88,11 +88,11 @@ def run_gemini_pool(pool, prompt, pending, write_result, log_progress):
             if item is sentinel:
                 return
             cid, body, title = item
-            wait = (last + GEMINI_PER_KEY_INTERVAL) - time.time()
+            wait = (last + per_key_interval) - time.time()
             if wait > 0:
                 time.sleep(wait)
             try:
-                mentions = gemini_extract(sess, key, prompt, title, body)
+                mentions = extract_fn(sess, key, prompt, title, body)
                 result_q.put((cid, mentions, None))
             except Exception as e:
                 result_q.put((cid, None, str(e)))
@@ -131,7 +131,7 @@ def main():
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--workers", type=int, default=6)
     parser.add_argument("--subreddit", default=None)
-    parser.add_argument("--provider", choices=["groq", "gemini"], default="groq")
+    parser.add_argument("--provider", choices=["groq", "gemini", "cerebras"], default="groq")
     parser.add_argument("--keys-file", default=None)
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
@@ -159,21 +159,30 @@ def main():
         eta = (total - n_done) / rate / 60 if rate else 0
         print(f"  ...{n_done}/{total}  {n_with} with mentions  {n_failed} failed  {rate:.1f}/s  eta {eta:.1f}m")
 
-    if args.provider == "gemini":
-        from llm.gemini_extract import make_session, load_prompt
+    if args.provider in ("gemini", "cerebras"):
+        if args.provider == "gemini":
+            from llm.gemini_extract import make_session, load_prompt, extract as ext_fn
+            default_keys_file = "gemini_api_key.txt"
+            interval = GEMINI_PER_KEY_INTERVAL
+        else:
+            from llm.cerebras_extract import make_session, load_prompt, extract as ext_fn
+            default_keys_file = "cerebras_api_key.txt"
+            interval = CEREBRAS_PER_KEY_INTERVAL
+
         keys_path = args.keys_file or str(
-            Path(__file__).resolve().parents[1] / "gemini_api_key.txt"
+            Path(__file__).resolve().parents[1] / default_keys_file
         )
         all_keys = [l.strip() for l in open(keys_path) if l.strip()]
-        keys = all_keys[1:] if len(all_keys) > 1 else all_keys
+        # gemini: skip the first key (today's burned). cerebras: use all keys.
+        keys = all_keys[1:] if (args.provider == "gemini" and len(all_keys) > 1) else all_keys
         pool = [(k, make_session()) for k in keys]
         prompt = load_prompt()
-        print(f"gemini multi-key: {len(pool)} keys, paced at {GEMINI_PER_KEY_INTERVAL}s/call/key")
+        print(f"{args.provider} multi-key: {len(pool)} keys, paced at {interval}s/call/key")
         print(f"{len(pending)} comments pending")
         if args.dry_run or not pending:
             return
-        n_done, n_with, n_failed, elapsed = run_gemini_pool(
-            pool, prompt, pending, write_result, log_progress
+        n_done, n_with, n_failed, elapsed = run_paced_pool(
+            ext_fn, interval, pool, prompt, pending, write_result, log_progress
         )
         print(f"\ndone. {n_with}/{n_done} with mentions, {n_failed} failed, {elapsed/60:.1f} min")
         print(f"total mentions in db: {con.execute('SELECT COUNT(*) FROM mentions').fetchone()[0]}")

@@ -6,6 +6,7 @@ venv/
 .streamlit/secrets.toml
 groq_api_key.txt
 gemini_api_key.txt
+cerebras_api_key.txt
 data.duckdb
 data.full.duckdb
 data.trimmed.duckdb

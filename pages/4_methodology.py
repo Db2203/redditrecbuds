@@ -5,10 +5,17 @@ import streamlit as st
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from lib.db import connect
+from lib.ui import apply_theme
 
-st.set_page_config(page_title="methodology", layout="wide")
-st.title("methodology")
-st.caption("how the rankings actually work, and what they don't tell you")
+st.set_page_config(page_title="methodology", layout="wide", initial_sidebar_state="collapsed")
+apply_theme()
+st.markdown(
+    "<div style='font-size:36px; font-weight:800; letter-spacing:-1px;'>methodology</div>"
+    "<div style='color:#8c8c8c; font-size:15px; margin-bottom:24px;'>"
+    "how the rankings actually work, and what they don't tell you."
+    "</div>",
+    unsafe_allow_html=True,
+)
 
 con = connect()
 
