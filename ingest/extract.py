@@ -4,7 +4,6 @@ uses a thread pool because groq calls are i/o bound. duckdb writes happen
 on the main thread (the connection isn't thread-safe for concurrent writes).
 """
 import argparse
-import re
 import sys
 import time
 import uuid
@@ -14,6 +13,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from lib.db import connect
+from lib.secrets import get as get_secret
 from llm.groq_extract import make_client, load_prompt, extract
 
 MIN_COMMENT_LEN = 80
@@ -23,11 +23,6 @@ MENTION_FIELDS = (
     "form_factor", "connection", "price_mentioned", "use_case",
     "sound_signature", "sentiment", "one_line_reason", "extracted_at",
 )
-
-
-def _read_key():
-    p = Path(__file__).resolve().parents[1] / ".streamlit" / "secrets.toml"
-    return re.search(r'GROQ_API_KEY\s*=\s*"([^"]+)"', p.read_text()).group(1)
 
 
 def _row_from_extraction(comment_id, item, now):
@@ -76,7 +71,7 @@ def main():
     args = parser.parse_args()
 
     con = connect()
-    client = make_client(_read_key())
+    client = make_client(get_secret("GROQ_API_KEY"))
     prompt = load_prompt()
 
     pending = get_pending(con, args.limit)
