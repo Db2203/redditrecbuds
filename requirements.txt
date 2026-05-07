@@ -4,6 +4,5 @@ plotly>=5.18
 pandas>=2.0
 requests>=2.31
 groq>=0.11
-google-generativeai>=0.7
 sqlparse>=0.4
 python-dotenv>=1.0
