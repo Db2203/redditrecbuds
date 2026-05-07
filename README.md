@@ -1,6 +1,6 @@
 # redditrecbuds
 
-a wireless-earbud recommender built from r/Earbuds comments. inspired by [redditrecs.com](https://redditrecs.com), with wilson-lower-bound ranking and a few extra views.
+a wireless-earbud recommender built from r/Earbuds comments. wilson-lower-bound ranking, sentiment extraction, per-product detail views.
 
 **[live →](https://redditrecbuds.streamlit.app/)**
 
@@ -38,6 +38,5 @@ extraction is checkpointed per-comment so you can ctrl-c and resume.
 
 ## credits
 
-- [redditrecs.com](https://redditrecs.com) for the methodology
 - [arctic shift](https://arctic-shift.photon-reddit.com/) for the data
-- [groq](https://groq.com) and [google ai studio](https://aistudio.google.com) for free-tier llm api access
+- [groq](https://groq.com), [google ai studio](https://aistudio.google.com), and [cerebras](https://cerebras.ai) for free-tier llm api access

@@ -77,10 +77,10 @@ st.markdown(
    - **log-normalized positive volume** - sheer count of positive votes,
      log-transformed and normalized so the most-mentioned product is 1.0.
 
-   final score = `0.75 * log_volume + 0.25 * wilson`. the 75:25 weighting follows
-   redditrecs.com's reasoning: *sheer volume of approval is more telling than
-   a few isolated rave reviews.* i kept the weighting and swapped their
-   normalized log-ratio term for the more rigorous wilson bound.
+   final score = `0.75 * log_volume + 0.25 * wilson`. the 75:25 weighting reflects
+   that sheer volume of approval is more telling than a few isolated rave reviews -
+   a product mentioned positively 100 times by 80 different users carries more weight
+   than one with a perfect ratio across 3 mentions.
 
 ### the wilson formula
 
@@ -109,14 +109,9 @@ a few honest limitations to be aware of when reading the rankings:
 - **sentiment is llm-judged**, so it inherits whatever biases llama 3.1 has.
   occasional misreads are baked in.
 
-### inspirations and what's mine
+### what's in here that's a bit different
 
-inspired by [redditrecs.com](https://redditrecs.com). the user-level vote dedup,
-the imprecise-reference spread, and the 75:25 volume / ratio weighting all come from
-their methodology. my contributions are:
-
-- swapping their normalized log-ratio for the **wilson lower bound** (more rigorous
-  for small-n products)
+- **wilson lower bound** for the ratio component (more rigorous than naive ratio for small-n products)
 - the **per-product detail page** with extracted pros / cons, price distribution,
   mentions over time, and co-mentioned products
 - the **side-by-side compare** view

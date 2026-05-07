@@ -50,8 +50,7 @@ st.markdown(
 
 st.markdown(
     "<div style='max-width:720px; margin: 24px auto; color:#a8a39a; line-height:1.7;'>"
-    "<p>Inspired by <a href='https://redditrecs.com' style='color:#ff7043'>redditrecs.com</a>. "
-    "Comments are pulled from r/Earbuds via the Arctic Shift archive, then an LLM extracts product mentions "
+    "<p>Comments are pulled from r/Earbuds via the Arctic Shift archive, then an LLM extracts product mentions "
     "and sentiment. Each user's mentions of a model are deduped to a single vote (so prolific posters can't dominate), "
     "imprecise references like \"Galaxy Buds\" are spread across known models weighted by popularity, and the final score "
     "combines the Wilson lower bound on positive ratio with log-normalized volume at 75:25.</p>"

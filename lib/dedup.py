@@ -1,6 +1,6 @@
 """dedup mentions to per-user-per-product votes, with imprecise reference spread.
 
-two stages, following the redditrecs.com methodology:
+two stages:
 
 1. precise mentions (brand + model both specified): collapse to one row per
    (author, brand, model) with the user's majority sentiment; weight = 1.0

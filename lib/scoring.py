@@ -5,11 +5,10 @@ it gives a confidence-aware floor on the true positive ratio: products
 with great ratios but tiny sample sizes get heavily penalized, which
 solves the '1 positive, 0 negative ranks #1' problem.
 
-final ranking combines wilson with a volume signal at 75:25
-(matching redditrecs.com's weighting). rationale: a product with 200
-positive votes and 5 negative is more clearly the popular pick than
-one with 5 positive and 0 negative, even if the second has a better
-naive ratio.
+final ranking combines wilson with a volume signal at 75:25.
+rationale: a product with 200 positive votes and 5 negative is more
+clearly the popular pick than one with 5 positive and 0 negative, even
+if the second has a better naive ratio.
 """
 import math
 
