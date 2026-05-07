@@ -24,21 +24,25 @@ arctic shift archive  ->  duckdb  ->  llama 3.1 (groq)  ->  per-user dedup  ->  
 5. spread imprecise references ("Galaxy Buds" with no version) across known models of that brand, weighted by overall mention count.
 6. score with `0.75 * normalized_log_volume + 0.25 * wilson_lower_bound` and rank.
 
-## the numbers
+## the numbers (v1)
 
 | | |
 |---|---|
-| posts ingested | _filled in after first full run_ |
-| comments analyzed | _filled in after first full run_ |
-| product mentions extracted | _filled in after first full run_ |
-| unique users contributing votes | _filled in after first full run_ |
-| wireless earbud models ranked | _filled in after first full run_ |
+| posts ingested across 4 audio subs (12 months) | 108,900 |
+| comments stored | 76,841 |
+| r/Earbuds comments fed to the LLM | 126 |
+| product mentions extracted | 324 |
+| deduped user votes | 550 |
+| unique voters | 72 |
+| products ranked with >= 2 votes | 25 |
+
+these are first-pass numbers. extraction was bottlenecked by gemini's free-tier daily cap (the multi-key approach burned through the keys faster than expected during a few rate-limit retries). the pipeline re-runs idempotently and is checkpointed per-comment, so a second pass tomorrow can comfortably 5-10x the mention count without re-processing anything.
 
 ## stack
 
 - **arctic shift** - public reddit archive (no auth)
 - **duckdb** - embedded analytical sql, single-file db
-- **groq + llama 3.1 8b** - extraction and sentiment, free tier
+- **groq (llama 3.1) and gemini 2.5 flash lite** - extraction, both on free tiers. gemini ended up doing the bulk of the work because its tpm headroom is much bigger than groq's.
 - **streamlit + plotly** - the dashboard
 - **streamlit community cloud** - hosting
 
@@ -53,16 +57,21 @@ python -m venv .venv && .venv/Scripts/activate    # or source .venv/bin/activate
 pip install -r requirements.txt
 cp .streamlit/secrets.toml.example .streamlit/secrets.toml
 # put your free groq api key in .streamlit/secrets.toml
+# for parallel multi-key gemini extraction also create gemini_api_key.txt with one key per line
 
+# pull (posts ~30 min, comments ~30 min depending on arctic shift load)
 python ingest/arctic_pull.py --mode posts --months 12
-python ingest/arctic_pull.py --mode comments --min-score 5 --min-num-comments 15
-python ingest/extract.py
-python ingest/score.py
+python ingest/arctic_pull.py --mode comments --comments-subreddit Earbuds --min-score 2 --min-num-comments 5 --max-posts 1500
 
+# extract (gemini multi-key recommended for speed)
+python ingest/extract.py --provider gemini --subreddit Earbuds --limit 5000
+
+# score, then run the app
+python ingest/score.py
 streamlit run app.py
 ```
 
-ingest takes ~45-90 min depending on how loaded arctic shift is that day. checkpoints mean you can ctrl-c and resume.
+extraction is checkpointed per-comment, so you can ctrl-c and resume any time.
 
 ## what this doesn't tell you
 
@@ -86,7 +95,9 @@ the methodology page in the app says all of this too, prominently.
 ## a couple of things i learned the hard way
 
 - arctic shift's backend returns 422 with "Timeout. Maybe slow down a bit" - that's a *backend query timeout*, not a rate-limit. backing off harder than you'd expect actually works. `sort=asc` on a wide time range trips it; `before=` walking backward is reliable.
-- llama 3.1 8b's structured-output mode (`response_format={"type": "json_object"}`) is solid for this kind of extraction with a few-shot prompt. it does occasionally classify a wired iem as a wireless earbud - the methodology page is honest about this.
+- groq's free tier is bottlenecked on tokens-per-minute (6k tpm), not requests. for extraction with a ~700-token prompt that caps real throughput at maybe ~8 calls/min. gemini's free tier has 1m tpm but only 1500 requests/day per key - opposite tradeoffs. ended up using gemini with multiple keys round-robined.
+- naive thread pools across multiple gemini keys waste a lot of quota on rate-limit retries. pinning one worker to one key with explicit ~4.5s/call pacing fixed it.
+- llama 3.1 8b's structured-output mode is solid for this kind of extraction with a few-shot prompt. it does occasionally classify a wired iem as a wireless earbud - the methodology page is honest about this.
 
 ## credits
 
