@@ -2,7 +2,7 @@
 
 a wireless-earbud recommender built from r/Earbuds comments. inspired by [redditrecs.com](https://redditrecs.com), with wilson-lower-bound ranking and a few extra views.
 
-**[live](#)**
+**[live →](https://redditrecbuds.streamlit.app/)**
 
 ## how it works
 
