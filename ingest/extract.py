@@ -1,9 +1,14 @@
-"""extract product mentions from comments using groq + llama 3.1."""
+"""extract product mentions from comments using groq + llama 3.1.
+
+uses a thread pool because groq calls are i/o bound. duckdb writes happen
+on the main thread (the connection isn't thread-safe for concurrent writes).
+"""
 import argparse
 import re
 import sys
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -43,7 +48,6 @@ def _row_from_extraction(comment_id, item, now):
 
 
 def get_pending(con, limit=None):
-    """comments not yet extracted, with parent post title for context."""
     sql = """
         SELECT c.id, c.body, p.title
         FROM comments c
@@ -55,6 +59,7 @@ def get_pending(con, limit=None):
               SELECT 1 FROM pull_checkpoints cp
               WHERE cp.source = 'extract:' || c.id AND cp.finished
           )
+        ORDER BY LENGTH(c.body) DESC
     """
     params = [MIN_COMMENT_LEN]
     if limit:
@@ -66,6 +71,7 @@ def get_pending(con, limit=None):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--limit", type=int, default=None)
+    parser.add_argument("--workers", type=int, default=6)
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
@@ -74,42 +80,50 @@ def main():
     prompt = load_prompt()
 
     pending = get_pending(con, args.limit)
-    print(f"{len(pending)} comments pending extraction")
+    print(f"{len(pending)} comments pending; using {args.workers} workers")
     if args.dry_run or not pending:
         return
 
     placeholders = ",".join("?" * len(MENTION_FIELDS))
     insert_sql = f"INSERT INTO mentions ({','.join(MENTION_FIELDS)}) VALUES ({placeholders})"
+    cp_sql = (
+        "INSERT INTO pull_checkpoints (source, finished) VALUES (?, TRUE) "
+        "ON CONFLICT (source) DO UPDATE SET finished = TRUE"
+    )
+
+    def task(item):
+        cid, body, title = item
+        try:
+            return cid, extract(client, prompt, title, body), None
+        except Exception as e:
+            return cid, [], str(e)
 
     n_with_mentions = 0
     n_failed = 0
+    n_done = 0
     start = time.time()
-    for i, (cid, body, title) in enumerate(pending):
-        try:
-            mentions = extract(client, prompt, title, body)
-        except Exception as e:
-            print(f"  failed on {cid}: {e}")
-            n_failed += 1
-            continue
-        now = int(time.time())
-        rows = [_row_from_extraction(cid, m, now) for m in mentions]
-        if rows:
-            con.executemany(insert_sql, rows)
-            n_with_mentions += 1
-        # checkpoint regardless: marks the comment as processed
-        con.execute(
-            "INSERT INTO pull_checkpoints (source, finished) VALUES (?, TRUE) "
-            "ON CONFLICT (source) DO UPDATE SET finished = TRUE",
-            [f"extract:{cid}"],
-        )
-        if (i + 1) % 50 == 0:
-            elapsed = time.time() - start
-            rate = (i + 1) / elapsed if elapsed else 0
-            eta = (len(pending) - (i + 1)) / rate / 60 if rate else 0
-            print(f"  ...{i+1}/{len(pending)}  {n_with_mentions} with mentions  {rate:.1f}/s  eta {eta:.1f}m")
+
+    with ThreadPoolExecutor(max_workers=args.workers) as ex:
+        futures = [ex.submit(task, item) for item in pending]
+        for fut in as_completed(futures):
+            cid, mentions, err = fut.result()
+            n_done += 1
+            if err:
+                n_failed += 1
+            now = int(time.time())
+            if mentions:
+                rows = [_row_from_extraction(cid, m, now) for m in mentions]
+                con.executemany(insert_sql, rows)
+                n_with_mentions += 1
+            con.execute(cp_sql, [f"extract:{cid}"])
+            if n_done % 50 == 0:
+                elapsed = time.time() - start
+                rate = n_done / elapsed if elapsed else 0
+                eta = (len(pending) - n_done) / rate / 60 if rate else 0
+                print(f"  ...{n_done}/{len(pending)}  {n_with_mentions} with mentions  {rate:.1f}/s  eta {eta:.1f}m")
 
     elapsed = time.time() - start
-    print(f"\ndone. {n_with_mentions}/{len(pending)} comments had mentions, {n_failed} failed")
+    print(f"\ndone. {n_with_mentions}/{n_done} comments had mentions, {n_failed} failed")
     print(f"total mentions in db: {con.execute('SELECT COUNT(*) FROM mentions').fetchone()[0]}")
     print(f"elapsed: {elapsed / 60:.1f} min")
     con.close()
