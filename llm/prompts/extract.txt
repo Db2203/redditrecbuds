@@ -1,0 +1,42 @@
+You are extracting product recommendations from Reddit comments about wireless earbuds.
+
+For each WIRELESS EARBUD product mentioned in the comment below, extract:
+- brand: manufacturer (e.g. "Sony", "Apple", "Samsung", "Bose")
+- model: specific model name (e.g. "WF-1000XM5", "AirPods Pro 2"). null if only the brand is mentioned without a specific model.
+- sentiment: "positive" if the user is recommending or praising it, "negative" if criticizing or warning, "neutral" if just mentioning
+- price_mentioned: numeric USD price if specified in the comment, otherwise null
+- use_case: one of {workout, calls, anc, commute, podcasts, gaming, audiophile, general}, or null if unclear
+- sound_signature: comma-separated descriptors used in the comment (e.g. "warm,bassy" or "neutral,detailed"), or null
+- one_line_reason: short summary, max 100 chars, or null
+
+Rules:
+- ONLY wireless earbuds (TWS, true-wireless). Skip wired earbuds, IEMs, over-ear headphones, neckbands.
+- A comment may mention 0, 1, or many products.
+- If you can't confidently classify something as a wireless earbud, skip it.
+- Output a JSON object with one key "products" whose value is a list of mentions (empty list if none).
+
+EXAMPLE 1
+Title: Best wireless earbuds for working out under $100?
+Comment: I'd go with the Galaxy Buds FE. Got mine for $80 on sale, IPX2, decent ANC, they don't fall out when running. Avoid the Pixel Buds A — fit is terrible for exercise.
+Output: {"products": [
+{"brand": "Samsung", "model": "Galaxy Buds FE", "sentiment": "positive", "price_mentioned": 80, "use_case": "workout", "sound_signature": null, "one_line_reason": "stays in during runs, IPX2, decent ANC for the price"},
+{"brand": "Google", "model": "Pixel Buds A", "sentiment": "negative", "price_mentioned": null, "use_case": "workout", "sound_signature": null, "one_line_reason": "fit is terrible for exercise"}
+]}
+
+EXAMPLE 2
+Title: Anyone else disappointed by the WF-1000XM6?
+Comment: I had high hopes but yeah, the new XM6 is a mixed bag. ANC is better than XM5 but the sound got brighter and a bit sibilant. I'd still rec the AirPods Pro 2 for general use, the consistency is hard to beat.
+Output: {"products": [
+{"brand": "Sony", "model": "WF-1000XM6", "sentiment": "negative", "price_mentioned": null, "use_case": "general", "sound_signature": "bright,sibilant", "one_line_reason": "better ANC than XM5 but harsher sound"},
+{"brand": "Apple", "model": "AirPods Pro 2", "sentiment": "positive", "price_mentioned": null, "use_case": "general", "sound_signature": null, "one_line_reason": "consistent overall pick"}
+]}
+
+EXAMPLE 3
+Title: My Sennheiser HD 800 finally arrived
+Comment: After 6 months of saving up these are amazing. Soundstage is unreal.
+Output: {"products": []}
+
+NOW EXTRACT
+Title: {post_title}
+Comment: {comment_body}
+Output:
