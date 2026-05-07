@@ -72,23 +72,36 @@ def main():
     parser.add_argument("--subreddit", default=None,
                         help="restrict to one subreddit, e.g. Earbuds")
     parser.add_argument("--provider", choices=["groq", "gemini"], default="groq")
+    parser.add_argument("--keys-file", default=None,
+                        help="for gemini: path to a file with one api key per line")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
     con = connect()
 
     if args.provider == "gemini":
-        from llm.gemini_extract import make_client, load_prompt, extract
-        key = get_secret("GEMINI_API_KEY")
+        from llm.gemini_extract import make_session, load_prompt, extract
+        keys_path = args.keys_file or str(
+            Path(__file__).resolve().parents[1] / "gemini_api_key.txt"
+        )
+        all_keys = [l.strip() for l in open(keys_path) if l.strip()]
+        # the original key (first line) is exhausted from yesterday; skip it.
+        # if you only have one key, comment this out.
+        keys = all_keys[1:] if len(all_keys) > 1 else all_keys
+        pool = [(k, make_session()) for k in keys]
+        n_workers = len(pool)
+        prompt = load_prompt()
+        is_gemini = True
+        print(f"gemini multi-key: {len(pool)} keys, one worker per key")
     else:
         from llm.groq_extract import make_client, load_prompt, extract
-        key = get_secret("GROQ_API_KEY")
-
-    client = make_client(key)
-    prompt = load_prompt()
+        client = make_client(get_secret("GROQ_API_KEY"))
+        prompt = load_prompt()
+        n_workers = args.workers
+        is_gemini = False
 
     pending = get_pending(con, args.limit, subreddit=args.subreddit)
-    print(f"{len(pending)} comments pending ({args.provider}); using {args.workers} workers")
+    print(f"{len(pending)} comments pending ({args.provider}); using {n_workers} workers")
     if args.dry_run or not pending:
         return
 
@@ -99,25 +112,35 @@ def main():
         "ON CONFLICT (source) DO UPDATE SET finished = TRUE"
     )
 
-    def task(item):
-        cid, body, title = item
-        try:
-            return cid, extract(client, prompt, title, body), None
-        except Exception as e:
-            return cid, [], str(e)
+    if is_gemini:
+        def task(item, idx):
+            cid, body, title = item
+            key, sess = pool[idx % len(pool)]
+            try:
+                return cid, extract(sess, key, prompt, title, body), None
+            except Exception as e:
+                return cid, None, str(e)
+    else:
+        def task(item, idx):
+            cid, body, title = item
+            try:
+                return cid, extract(client, prompt, title, body), None
+            except Exception as e:
+                return cid, None, str(e)
 
     n_with_mentions = 0
     n_failed = 0
     n_done = 0
     start = time.time()
 
-    with ThreadPoolExecutor(max_workers=args.workers) as ex:
-        futures = [ex.submit(task, item) for item in pending]
+    with ThreadPoolExecutor(max_workers=n_workers) as ex:
+        futures = [ex.submit(task, item, i) for i, item in enumerate(pending)]
         for fut in as_completed(futures):
             cid, mentions, err = fut.result()
             n_done += 1
             if err:
                 n_failed += 1
+                continue
             now = int(time.time())
             if mentions:
                 rows = [_row_from_extraction(cid, m, now) for m in mentions]
@@ -128,7 +151,7 @@ def main():
                 elapsed = time.time() - start
                 rate = n_done / elapsed if elapsed else 0
                 eta = (len(pending) - n_done) / rate / 60 if rate else 0
-                print(f"  ...{n_done}/{len(pending)}  {n_with_mentions} with mentions  {rate:.1f}/s  eta {eta:.1f}m")
+                print(f"  ...{n_done}/{len(pending)}  {n_with_mentions} with mentions  {n_failed} failed  {rate:.1f}/s  eta {eta:.1f}m")
 
     elapsed = time.time() - start
     print(f"\ndone. {n_with_mentions}/{n_done} comments had mentions, {n_failed} failed")

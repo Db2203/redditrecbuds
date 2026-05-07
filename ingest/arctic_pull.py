@@ -138,7 +138,8 @@ def pull_post_comments(con, session, post_id, batch_size=50):
     return n_seen
 
 
-def pull_comments_for_relevant(con, session, min_score=2, min_num_comments=3, max_posts=None):
+def pull_comments_for_relevant(con, session, min_score=2, min_num_comments=3,
+                               max_posts=None, subreddit=None):
     sql = """
         SELECT p.id, p.title, p.num_comments
         FROM posts p
@@ -148,9 +149,12 @@ def pull_comments_for_relevant(con, session, min_score=2, min_num_comments=3, ma
             SELECT 1 FROM pull_checkpoints cp
             WHERE cp.source = 'post_comments:' || p.id AND cp.finished
           )
-        ORDER BY p.num_comments DESC
     """
     params = [min_score, min_num_comments]
+    if subreddit:
+        sql += " AND p.subreddit = ?"
+        params.append(subreddit)
+    sql += " ORDER BY p.num_comments DESC"
     if max_posts:
         sql += " LIMIT ?"
         params.append(max_posts)
@@ -182,6 +186,8 @@ def main():
     parser.add_argument("--min-score", type=int, default=2)
     parser.add_argument("--min-num-comments", type=int, default=3)
     parser.add_argument("--max-posts", type=int, default=None)
+    parser.add_argument("--comments-subreddit", default=None,
+                        help="restrict comments-mode pulls to one subreddit")
     args = parser.parse_args()
 
     con = connect()
@@ -205,6 +211,7 @@ def main():
             min_score=args.min_score,
             min_num_comments=args.min_num_comments,
             max_posts=args.max_posts,
+            subreddit=args.comments_subreddit,
         )
 
     print()
