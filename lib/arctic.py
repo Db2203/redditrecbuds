@@ -2,7 +2,7 @@ import time
 import requests
 
 BASE_URL = "https://arctic-shift.photon-reddit.com"
-USER_AGENT = "audiorec/0.1 (https://github.com/Db2203/audiorec)"
+USER_AGENT = "redditrecbuds/0.1 (https://github.com/Db2203/redditrecbuds)"
 
 
 def make_session():
@@ -19,8 +19,8 @@ def get_json(session, path, params, max_retries=5):
         last = r
         if r.status_code == 200:
             return r.json()
-        # 422 here = arctic shift's backend query timeout, not a client error.
-        # back off harder than you'd think — their db gets unhappy under load.
+        # 422 here is arctic shift's backend query timeout, not a client error.
+        # backing off harder than you'd think actually helps; their db chokes under load.
         if r.status_code in (422, 429, 500, 502, 503, 504):
             time.sleep(3 + 3 * attempt)
             continue
