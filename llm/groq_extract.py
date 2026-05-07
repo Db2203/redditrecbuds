@@ -16,7 +16,7 @@ def make_client(api_key):
     return Groq(api_key=api_key)
 
 
-def extract(client, prompt_template, post_title, comment_body, max_retries=3):
+def extract(client, prompt_template, post_title, comment_body, max_retries=2):
     """run extraction on a single comment. returns list of product dicts."""
     prompt = (
         prompt_template
@@ -31,19 +31,21 @@ def extract(client, prompt_template, post_title, comment_body, max_retries=3):
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.1,
                 response_format={"type": "json_object"},
-                max_tokens=1024,
+                max_tokens=512,
             )
             content = resp.choices[0].message.content
             return json.loads(content).get("products", [])
         except json.JSONDecodeError:
-            if attempt < max_retries - 1:
-                time.sleep(1.0 * (attempt + 1))
-                continue
             return []
         except Exception as e:
             msg = str(e).lower()
-            if "rate" in msg or "429" in msg or "503" in msg:
-                time.sleep(5 * (attempt + 1))
+            if ("rate" in msg or "429" in msg) and attempt < max_retries - 1:
+                # wait one full token-bucket window so we don't bounce off
+                # the limit in 5/10s ticks
+                time.sleep(62)
                 continue
-            raise
+            if ("503" in msg or "502" in msg) and attempt < max_retries - 1:
+                time.sleep(3)
+                continue
+            return []
     return []
