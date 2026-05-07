@@ -1,10 +1,13 @@
-"""extract product mentions from comments using groq + llama 3.1.
+"""extract product mentions from comments using groq or gemini.
 
-uses a thread pool because groq calls are i/o bound. duckdb writes happen
-on the main thread (the connection isn't thread-safe for concurrent writes).
+groq path: shared client + thread pool (groq sdk is thread-safe, single key).
+gemini path: one worker thread pinned to one api key, paced at 4.5s/call to
+respect the per-key 15 rpm cap. with N keys we get ~N/4 calls/sec total.
 """
 import argparse
+import queue
 import sys
+import threading
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -16,6 +19,7 @@ from lib.db import connect
 from lib.secrets import get as get_secret
 
 MIN_COMMENT_LEN = 80
+GEMINI_PER_KEY_INTERVAL = 4.5  # 15 rpm per key + small buffer
 
 MENTION_FIELDS = (
     "mention_id", "comment_id", "brand", "model",
@@ -65,45 +69,75 @@ def get_pending(con, limit=None, subreddit=None):
     return con.execute(sql, params).fetchall()
 
 
+def run_gemini_pool(pool, prompt, pending, write_result, log_progress):
+    from llm.gemini_extract import extract as gemini_extract
+
+    work_q = queue.Queue()
+    for item in pending:
+        work_q.put(item)
+    sentinel = object()
+    for _ in pool:
+        work_q.put(sentinel)
+
+    result_q = queue.Queue()
+
+    def worker(key, sess):
+        last = 0.0
+        while True:
+            item = work_q.get()
+            if item is sentinel:
+                return
+            cid, body, title = item
+            wait = (last + GEMINI_PER_KEY_INTERVAL) - time.time()
+            if wait > 0:
+                time.sleep(wait)
+            try:
+                mentions = gemini_extract(sess, key, prompt, title, body)
+                result_q.put((cid, mentions, None))
+            except Exception as e:
+                result_q.put((cid, None, str(e)))
+            last = time.time()
+
+    threads = [threading.Thread(target=worker, args=(k, s), daemon=True)
+               for k, s in pool]
+    for t in threads:
+        t.start()
+
+    n_done = n_with = n_failed = 0
+    start = time.time()
+    total = len(pending)
+    while n_done < total:
+        cid, mentions, err = result_q.get()
+        n_done += 1
+        if err:
+            n_failed += 1
+            continue
+        if mentions:
+            write_result(cid, mentions)
+            n_with += 1
+        else:
+            write_result(cid, [])
+        if n_done % 50 == 0:
+            log_progress(n_done, total, n_with, n_failed, start)
+
+    for t in threads:
+        t.join(timeout=1)
+
+    return n_done, n_with, n_failed, time.time() - start
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--workers", type=int, default=6)
-    parser.add_argument("--subreddit", default=None,
-                        help="restrict to one subreddit, e.g. Earbuds")
+    parser.add_argument("--subreddit", default=None)
     parser.add_argument("--provider", choices=["groq", "gemini"], default="groq")
-    parser.add_argument("--keys-file", default=None,
-                        help="for gemini: path to a file with one api key per line")
+    parser.add_argument("--keys-file", default=None)
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
     con = connect()
-
-    if args.provider == "gemini":
-        from llm.gemini_extract import make_session, load_prompt, extract
-        keys_path = args.keys_file or str(
-            Path(__file__).resolve().parents[1] / "gemini_api_key.txt"
-        )
-        all_keys = [l.strip() for l in open(keys_path) if l.strip()]
-        # the original key (first line) is exhausted from yesterday; skip it.
-        # if you only have one key, comment this out.
-        keys = all_keys[1:] if len(all_keys) > 1 else all_keys
-        pool = [(k, make_session()) for k in keys]
-        n_workers = len(pool)
-        prompt = load_prompt()
-        is_gemini = True
-        print(f"gemini multi-key: {len(pool)} keys, one worker per key")
-    else:
-        from llm.groq_extract import make_client, load_prompt, extract
-        client = make_client(get_secret("GROQ_API_KEY"))
-        prompt = load_prompt()
-        n_workers = args.workers
-        is_gemini = False
-
     pending = get_pending(con, args.limit, subreddit=args.subreddit)
-    print(f"{len(pending)} comments pending ({args.provider}); using {n_workers} workers")
-    if args.dry_run or not pending:
-        return
 
     placeholders = ",".join("?" * len(MENTION_FIELDS))
     insert_sql = f"INSERT INTO mentions ({','.join(MENTION_FIELDS)}) VALUES ({placeholders})"
@@ -112,51 +146,74 @@ def main():
         "ON CONFLICT (source) DO UPDATE SET finished = TRUE"
     )
 
-    if is_gemini:
-        def task(item, idx):
-            cid, body, title = item
-            key, sess = pool[idx % len(pool)]
-            try:
-                return cid, extract(sess, key, prompt, title, body), None
-            except Exception as e:
-                return cid, None, str(e)
-    else:
-        def task(item, idx):
-            cid, body, title = item
-            try:
-                return cid, extract(client, prompt, title, body), None
-            except Exception as e:
-                return cid, None, str(e)
+    def write_result(cid, mentions):
+        if mentions:
+            now = int(time.time())
+            rows = [_row_from_extraction(cid, m, now) for m in mentions]
+            con.executemany(insert_sql, rows)
+        con.execute(cp_sql, [f"extract:{cid}"])
 
-    n_with_mentions = 0
-    n_failed = 0
-    n_done = 0
+    def log_progress(n_done, total, n_with, n_failed, start):
+        elapsed = time.time() - start
+        rate = n_done / elapsed if elapsed else 0
+        eta = (total - n_done) / rate / 60 if rate else 0
+        print(f"  ...{n_done}/{total}  {n_with} with mentions  {n_failed} failed  {rate:.1f}/s  eta {eta:.1f}m")
+
+    if args.provider == "gemini":
+        from llm.gemini_extract import make_session, load_prompt
+        keys_path = args.keys_file or str(
+            Path(__file__).resolve().parents[1] / "gemini_api_key.txt"
+        )
+        all_keys = [l.strip() for l in open(keys_path) if l.strip()]
+        keys = all_keys[1:] if len(all_keys) > 1 else all_keys
+        pool = [(k, make_session()) for k in keys]
+        prompt = load_prompt()
+        print(f"gemini multi-key: {len(pool)} keys, paced at {GEMINI_PER_KEY_INTERVAL}s/call/key")
+        print(f"{len(pending)} comments pending")
+        if args.dry_run or not pending:
+            return
+        n_done, n_with, n_failed, elapsed = run_gemini_pool(
+            pool, prompt, pending, write_result, log_progress
+        )
+        print(f"\ndone. {n_with}/{n_done} with mentions, {n_failed} failed, {elapsed/60:.1f} min")
+        print(f"total mentions in db: {con.execute('SELECT COUNT(*) FROM mentions').fetchone()[0]}")
+        con.close()
+        return
+
+    # groq single-key path
+    from llm.groq_extract import make_client, load_prompt, extract as groq_extract
+    client = make_client(get_secret("GROQ_API_KEY"))
+    prompt = load_prompt()
+    print(f"groq: {len(pending)} comments pending; using {args.workers} workers")
+    if args.dry_run or not pending:
+        return
+
+    def task(item):
+        cid, body, title = item
+        try:
+            return cid, groq_extract(client, prompt, title, body), None
+        except Exception as e:
+            return cid, None, str(e)
+
+    n_with = n_failed = n_done = 0
     start = time.time()
-
-    with ThreadPoolExecutor(max_workers=n_workers) as ex:
-        futures = [ex.submit(task, item, i) for i, item in enumerate(pending)]
-        for fut in as_completed(futures):
+    with ThreadPoolExecutor(max_workers=args.workers) as ex:
+        for fut in as_completed([ex.submit(task, it) for it in pending]):
             cid, mentions, err = fut.result()
             n_done += 1
             if err:
                 n_failed += 1
                 continue
-            now = int(time.time())
             if mentions:
-                rows = [_row_from_extraction(cid, m, now) for m in mentions]
-                con.executemany(insert_sql, rows)
-                n_with_mentions += 1
-            con.execute(cp_sql, [f"extract:{cid}"])
+                write_result(cid, mentions)
+                n_with += 1
+            else:
+                write_result(cid, [])
             if n_done % 50 == 0:
-                elapsed = time.time() - start
-                rate = n_done / elapsed if elapsed else 0
-                eta = (len(pending) - n_done) / rate / 60 if rate else 0
-                print(f"  ...{n_done}/{len(pending)}  {n_with_mentions} with mentions  {n_failed} failed  {rate:.1f}/s  eta {eta:.1f}m")
+                log_progress(n_done, len(pending), n_with, n_failed, start)
 
-    elapsed = time.time() - start
-    print(f"\ndone. {n_with_mentions}/{n_done} comments had mentions, {n_failed} failed")
+    print(f"\ndone. {n_with}/{n_done} with mentions, {n_failed} failed, {(time.time()-start)/60:.1f} min")
     print(f"total mentions in db: {con.execute('SELECT COUNT(*) FROM mentions').fetchone()[0]}")
-    print(f"elapsed: {elapsed / 60:.1f} min")
     con.close()
 
 
