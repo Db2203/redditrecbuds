@@ -4,6 +4,7 @@ __pycache__/
 venv/
 .env
 .streamlit/secrets.toml
+*.duckdb
 *.duckdb-wal
 *.duckdb-tmp
 .DS_Store
