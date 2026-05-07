@@ -5,7 +5,7 @@ venv/
 .env
 .streamlit/secrets.toml
 groq_api_key.txt
-*.duckdb
+data.full.duckdb
 *.duckdb-wal
 *.duckdb-tmp
 *.duckdb.wal
