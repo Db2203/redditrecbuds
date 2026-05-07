@@ -138,9 +138,8 @@ def pull_post_comments(con, session, post_id, batch_size=50):
     return n_seen
 
 
-def pull_comments_for_relevant(con, session, min_score=2, min_num_comments=3):
-    posts = con.execute(
-        """
+def pull_comments_for_relevant(con, session, min_score=2, min_num_comments=3, max_posts=None):
+    sql = """
         SELECT p.id, p.title, p.num_comments
         FROM posts p
         WHERE p.score >= ?
@@ -150,9 +149,12 @@ def pull_comments_for_relevant(con, session, min_score=2, min_num_comments=3):
             WHERE cp.source = 'post_comments:' || p.id AND cp.finished
           )
         ORDER BY p.num_comments DESC
-        """,
-        [min_score, min_num_comments],
-    ).fetchall()
+    """
+    params = [min_score, min_num_comments]
+    if max_posts:
+        sql += " LIMIT ?"
+        params.append(max_posts)
+    posts = con.execute(sql, params).fetchall()
 
     print(f"  {len(posts)} posts to fetch comments for")
     total = 0
@@ -179,6 +181,7 @@ def main():
     parser.add_argument("--batch", type=int, default=50)
     parser.add_argument("--min-score", type=int, default=2)
     parser.add_argument("--min-num-comments", type=int, default=3)
+    parser.add_argument("--max-posts", type=int, default=None)
     args = parser.parse_args()
 
     con = connect()
@@ -201,6 +204,7 @@ def main():
             con, session,
             min_score=args.min_score,
             min_num_comments=args.min_num_comments,
+            max_posts=args.max_posts,
         )
 
     print()
