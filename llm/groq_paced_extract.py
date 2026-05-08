@@ -47,10 +47,18 @@ def extract(session, api_key, prompt_template, post_title, comment_body, max_ret
             except json.JSONDecodeError:
                 return []
         if r.status_code == 429:
+            # if it's the daily token cap, no amount of waiting will help
+            # before midnight pacific. fail fast so the orchestrator stops.
+            try:
+                err_msg = r.json().get("error", {}).get("message", "")
+            except Exception:
+                err_msg = r.text[:200]
+            if "per day" in err_msg.lower() or "TPD" in err_msg:
+                raise RuntimeError(f"groq daily token cap reached: {err_msg[:160]}")
             if attempt < max_retries - 1:
                 time.sleep(30)
                 continue
-            raise RuntimeError("groq-paced rate limited after retries")
+            raise RuntimeError(f"groq-paced rate limited after retries: {err_msg[:160]}")
         if r.status_code in (500, 502, 503, 504):
             if attempt < max_retries - 1:
                 time.sleep(5)

@@ -54,7 +54,7 @@ def main():
         """
     )
 
-    for tbl in ("mentions", "votes"):
+    for tbl in ("mentions", "votes", "pull_checkpoints"):
         try:
             con.execute(f"CREATE TABLE {tbl} AS SELECT * FROM src.{tbl}")
             print(f"copied {tbl}")

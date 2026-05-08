@@ -117,9 +117,11 @@ def run_paced_pool(extract_fn, per_key_interval, pool, prompt, pending,
 
     result_q = queue.Queue()
 
+    stop_flag = threading.Event()
+
     def worker(key, sess):
         last = 0.0
-        while True:
+        while not stop_flag.is_set():
             item = work_q.get()
             if item is sentinel:
                 return
@@ -131,7 +133,14 @@ def run_paced_pool(extract_fn, per_key_interval, pool, prompt, pending,
                 mentions = extract_fn(sess, key, prompt, title, body)
                 result_q.put((cid, mentions, None))
             except Exception as e:
-                result_q.put((cid, None, str(e)))
+                msg = str(e)
+                # daily caps don't reset until midnight; bail rather than
+                # iterate through thousands of failures.
+                if "daily" in msg.lower() or "per day" in msg.lower() or "TPD" in msg:
+                    stop_flag.set()
+                    result_q.put((cid, None, f"DAILY_CAP: {msg}"))
+                    return
+                result_q.put((cid, None, msg))
             last = time.time()
 
     threads = [threading.Thread(target=worker, args=(k, s), daemon=True)
@@ -142,11 +151,22 @@ def run_paced_pool(extract_fn, per_key_interval, pool, prompt, pending,
     n_done = n_with = n_failed = 0
     start = time.time()
     total = len(pending)
+    daily_cap_hit = False
     while n_done < total:
-        cid, mentions, err = result_q.get()
+        try:
+            cid, mentions, err = result_q.get(timeout=2)
+        except queue.Empty:
+            if stop_flag.is_set():
+                break
+            continue
         n_done += 1
         if err:
             n_failed += 1
+            if err.startswith("DAILY_CAP:"):
+                print(f"\n!! daily quota cap hit: {err[10:200]}")
+                print(f"!! stopping. processed {n_done}/{total} so far.")
+                daily_cap_hit = True
+                break
             continue
         if mentions:
             write_result(cid, mentions)
@@ -156,6 +176,7 @@ def run_paced_pool(extract_fn, per_key_interval, pool, prompt, pending,
         if n_done % 50 == 0:
             log_progress(n_done, total, n_with, n_failed, start)
 
+    stop_flag.set()
     for t in threads:
         t.join(timeout=1)
 
