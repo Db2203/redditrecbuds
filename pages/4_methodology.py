@@ -37,7 +37,28 @@ c2.metric("comments", f"{n_comments:,}")
 c3.metric("mentions", f"{n_mentions:,}")
 c4.metric("unique users", f"{n_users:,}")
 
-st.divider()
+st.markdown("<div style='height:24px;'></div>", unsafe_allow_html=True)
+
+# pipeline diagram
+st.markdown(
+    """
+<div style='background:#151a22; border:1px solid #232a36; border-radius:14px; padding:24px; margin:8px 0 24px 0;'>
+<div style='font-size:13px; font-weight:600; color:#8c8c8c; text-transform:uppercase; letter-spacing:1px; margin-bottom:14px;'>pipeline</div>
+<div style='display:flex; gap:8px; flex-wrap:wrap; align-items:center; font-family: "JetBrains Mono", monospace; font-size:13px;'>
+<span style='background:#1f2530; padding:8px 14px; border-radius:8px; color:#cfcabd;'>arctic shift archive</span>
+<span style='color:#ff7043;'>&rarr;</span>
+<span style='background:#1f2530; padding:8px 14px; border-radius:8px; color:#cfcabd;'>duckdb</span>
+<span style='color:#ff7043;'>&rarr;</span>
+<span style='background:#1f2530; padding:8px 14px; border-radius:8px; color:#cfcabd;'>llama 3.1 (groq)</span>
+<span style='color:#ff7043;'>&rarr;</span>
+<span style='background:#1f2530; padding:8px 14px; border-radius:8px; color:#cfcabd;'>per-user dedup</span>
+<span style='color:#ff7043;'>&rarr;</span>
+<span style='background:#2a3346; padding:8px 14px; border-radius:8px; color:#f1e5d1; font-weight:600;'>wilson + log volume</span>
+</div>
+</div>
+""",
+    unsafe_allow_html=True,
+)
 
 st.markdown(
     """

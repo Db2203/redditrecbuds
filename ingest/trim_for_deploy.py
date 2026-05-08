@@ -21,10 +21,10 @@ def main():
         print(f"no source db at {SRC}")
         sys.exit(1)
 
-    # back up the full db so we don't lose detail
-    if not FULL.exists():
-        print(f"backing up {SRC} -> {FULL}")
-        shutil.copy(SRC, FULL)
+    # always re-back up; do NOT skip when FULL already exists or a prior day's
+    # backup will get used as the source and we'll wipe today's work.
+    print(f"backing up {SRC} -> {FULL}")
+    shutil.copy(SRC, FULL)
 
     if TMP.exists():
         TMP.unlink()
