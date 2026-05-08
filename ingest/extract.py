@@ -21,6 +21,7 @@ from lib.secrets import get as get_secret
 MIN_COMMENT_LEN = 80
 GEMINI_PER_KEY_INTERVAL = 4.5    # gemini: 15 rpm per key + buffer
 CEREBRAS_PER_KEY_INTERVAL = 2.1  # cerebras: 30 rpm per key + buffer
+GROQ_PACED_INTERVAL = 7.5        # groq: 6k tpm / ~800 tokens/call ≈ 8 calls/min
 
 MENTION_FIELDS = (
     "mention_id", "comment_id", "brand", "model",
@@ -44,6 +45,41 @@ def _row_from_extraction(comment_id, item, now):
         item.get("one_line_reason"),
         now,
     )
+
+
+def _validate_keys(provider, keys):
+    """ping each key with a tiny prompt; return only the ones that respond 200.
+    retries network errors up to 3 times so transient timeouts don't drop good keys.
+    only implemented for gemini (multi-key); cerebras + groq-paced are single-key."""
+    import requests
+    if provider != "gemini":
+        return keys
+    url_tpl = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key={key}"
+    body = {"contents": [{"parts": [{"text": "OK"}]}], "generationConfig": {"maxOutputTokens": 5}}
+    valid = []
+    for k in keys:
+        tail = k[-4:] if len(k) >= 4 else k
+        last_err = None
+        ok = False
+        for attempt in range(3):
+            try:
+                r = requests.post(url_tpl.format(key=k), json=body, timeout=20)
+                if r.status_code == 200:
+                    ok = True
+                    break
+                # 4xx is a real key problem; don't retry
+                if 400 <= r.status_code < 500:
+                    last_err = f"{r.status_code}"
+                    break
+                last_err = f"{r.status_code}"
+            except requests.RequestException as e:
+                last_err = str(e)[:60]
+                time.sleep(2)
+        if ok:
+            valid.append(k)
+        else:
+            print(f"  skipping bad key ...{tail} ({last_err})")
+    return valid
 
 
 def get_pending(con, limit=None, subreddit=None):
@@ -131,7 +167,7 @@ def main():
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--workers", type=int, default=6)
     parser.add_argument("--subreddit", default=None)
-    parser.add_argument("--provider", choices=["groq", "gemini", "cerebras"], default="groq")
+    parser.add_argument("--provider", choices=["groq", "groq-paced", "gemini", "cerebras"], default="groq")
     parser.add_argument("--keys-file", default=None)
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
@@ -159,25 +195,45 @@ def main():
         eta = (total - n_done) / rate / 60 if rate else 0
         print(f"  ...{n_done}/{total}  {n_with} with mentions  {n_failed} failed  {rate:.1f}/s  eta {eta:.1f}m")
 
-    if args.provider in ("gemini", "cerebras"):
+    if args.provider in ("gemini", "cerebras", "groq-paced"):
         if args.provider == "gemini":
             from llm.gemini_extract import make_session, load_prompt, extract as ext_fn
             default_keys_file = "gemini_api_key.txt"
             interval = GEMINI_PER_KEY_INTERVAL
-        else:
+            from_file = True
+        elif args.provider == "cerebras":
             from llm.cerebras_extract import make_session, load_prompt, extract as ext_fn
             default_keys_file = "cerebras_api_key.txt"
             interval = CEREBRAS_PER_KEY_INTERVAL
+            from_file = True
+        else:  # groq-paced
+            from llm.gemini_extract import make_session  # generic requests.Session
+            from llm.groq_extract import load_prompt
+            from llm.groq_paced_extract import extract as ext_fn
+            default_keys_file = None
+            interval = GROQ_PACED_INTERVAL
+            from_file = False
 
-        keys_path = args.keys_file or str(
-            Path(__file__).resolve().parents[1] / default_keys_file
-        )
-        all_keys = [l.strip() for l in open(keys_path) if l.strip()]
-        # gemini: skip the first key (today's burned). cerebras: use all keys.
-        keys = all_keys[1:] if (args.provider == "gemini" and len(all_keys) > 1) else all_keys
-        pool = [(k, make_session()) for k in keys]
+        if from_file:
+            keys_path = args.keys_file or str(
+                Path(__file__).resolve().parents[1] / default_keys_file
+            )
+            all_keys = [l.strip() for l in open(keys_path) if l.strip()]
+            # validate every key with a tiny test call; drop any that fail.
+            print(f"validating {len(all_keys)} {args.provider} keys...")
+            valid = _validate_keys(args.provider, all_keys)
+            if not valid:
+                print(f"no working {args.provider} keys; bailing")
+                return
+            print(f"  {len(valid)}/{len(all_keys)} keys valid")
+            pool = [(k, make_session()) for k in valid]
+        else:
+            # single-key path (groq-paced)
+            single_key = get_secret("GROQ_API_KEY")
+            pool = [(single_key, make_session())]
+
         prompt = load_prompt()
-        print(f"{args.provider} multi-key: {len(pool)} keys, paced at {interval}s/call/key")
+        print(f"{args.provider}: {len(pool)} key(s), paced at {interval}s/call/key")
         print(f"{len(pending)} comments pending")
         if args.dry_run or not pending:
             return
