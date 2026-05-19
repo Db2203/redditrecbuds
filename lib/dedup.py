@@ -100,8 +100,37 @@ JOIN brand_totals bt USING (brand)
 """
 
 
+def _build_canonical_mentions(con):
+    """create a temp table mirroring mentions but with (brand, model) canonicalized.
+    we run dedup against THIS table so the merge happens upstream of all scoring math.
+    """
+    from lib.canonical import canonical
+    con.execute("DROP TABLE IF EXISTS canonical_mentions")
+    # copy schema only
+    con.execute("CREATE TABLE canonical_mentions AS SELECT * FROM mentions WHERE 1=0")
+    cols = [r[0] for r in con.execute("DESCRIBE mentions").fetchall()]
+    placeholders = ",".join("?" * len(cols))
+    rows = con.execute(f"SELECT {','.join(cols)} FROM mentions").fetchall()
+    brand_idx = cols.index("brand")
+    model_idx = cols.index("model")
+    new_rows = []
+    for r in rows:
+        c_brand, c_model = canonical(r[brand_idx], r[model_idx])
+        nr = list(r)
+        nr[brand_idx] = c_brand
+        nr[model_idx] = c_model
+        new_rows.append(nr)
+    con.executemany(
+        f"INSERT INTO canonical_mentions VALUES ({placeholders})",
+        new_rows,
+    )
+
+
 def rebuild_votes(con, top_n=IMPRECISE_SPREAD_TOP_N):
-    """rebuild the votes table from current mentions."""
+    """rebuild the votes table from current mentions, with canonical merge applied."""
+    _build_canonical_mentions(con)
     con.execute(DROP_VOTES)
-    con.execute(BUILD_VOTES.format(top_n=top_n))
+    # the canonical merge lives upstream in canonical_mentions; rest of the math unchanged.
+    sql = BUILD_VOTES.format(top_n=top_n).replace("FROM mentions", "FROM canonical_mentions")
+    con.execute(sql)
     return con.execute("SELECT COUNT(*) FROM votes").fetchone()[0]
