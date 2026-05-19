@@ -73,12 +73,21 @@ st.markdown(
 2. **filtered** to comments long enough to actually contain a recommendation
    (≥ 80 chars), skipping AutoModerator and `[deleted]` / `[removed]` content.
 
-3. **extracted** product mentions with llama 3.1 8b (via groq's free tier).
-   the model returns, per comment, a json list of every wireless earbud mentioned -
-   brand, specific model, sentiment (positive / neutral / negative), price if mentioned,
-   use case, sound-signature words, and a one-line reason.
-   the prompt has three few-shot examples and is strict about ignoring over-ear
-   headphones, IEMs, and wired earbuds.
+3. **extracted** product mentions with a two-stage hybrid:
+   - **LLM pass** with llama 3.1 8b / gemini 2.5 flash lite via free-tier APIs.
+     for each comment, the model returns a json list of every wireless earbud
+     mentioned with brand, model, sentiment, price if mentioned, use case,
+     sound-signature words, and a one-line reason. the prompt has few-shot
+     examples and is strict about ignoring over-ear / IEM / wired gear.
+   - **regex pass** building patterns from the LLM-extracted (brand, model)
+     dictionary, scanning every remaining comment, with keyword-based sentiment
+     within ±80 chars of each match. this is rougher but scales for free since
+     the LLM free-tier rate limits cap us at ~0.3 calls/sec sustained.
+     regex-derived mentions are tagged `source='regex'` in the database.
+
+   on this dataset, ~80% of mentions come from regex matching and ~20% from
+   the LLM pass. the LLM-extracted attributes (price, use case, sound signature)
+   only exist for the LLM-pass subset.
 
 4. **deduped** votes per user. one user mentioning the same model 5 times in
    a thread shouldn't dominate that model's score, so per `(author, brand, model)`
