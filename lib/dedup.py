@@ -5,11 +5,16 @@ two stages:
 1. precise mentions (brand + model both specified): collapse to one row per
    (author, brand, model) with the user's majority sentiment; weight = 1.0
 2. imprecise mentions (brand specified, model not): spread the user's vote
-   across all known models of that brand, weighted by each model's overall
-   mention count. weights sum to 1.0 per (author, brand) pair.
+   across the TOP 3 most-mentioned models of that brand, weighted by each
+   model's overall mention count. weights sum to 1.0 per (author, brand) pair.
+   capping at top 3 avoids smearing one "Bose" mention across 8 model variants
+   and creating phantom ties in the rankings.
 
 result: a `votes` table joining the two with a uniform schema.
 """
+
+# how many top models per brand to spread imprecise mentions across
+IMPRECISE_SPREAD_TOP_N = 3
 
 DROP_VOTES = "DROP TABLE IF EXISTS votes"
 
@@ -41,11 +46,15 @@ precise_winning AS (
     )
     WHERE rk = 1
 ),
-brand_models AS (
-    SELECT brand, model, COUNT(*) AS n
+brand_models_all AS (
+    SELECT brand, model, COUNT(*) AS n,
+           ROW_NUMBER() OVER (PARTITION BY brand ORDER BY COUNT(*) DESC) AS rk
     FROM mentions
     WHERE brand IS NOT NULL AND model IS NOT NULL
     GROUP BY 1, 2
+),
+brand_models AS (
+    SELECT brand, model, n FROM brand_models_all WHERE rk <= {top_n}
 ),
 brand_totals AS (
     SELECT brand, SUM(n) AS total
@@ -91,8 +100,8 @@ JOIN brand_totals bt USING (brand)
 """
 
 
-def rebuild_votes(con):
+def rebuild_votes(con, top_n=IMPRECISE_SPREAD_TOP_N):
     """rebuild the votes table from current mentions."""
     con.execute(DROP_VOTES)
-    con.execute(BUILD_VOTES)
+    con.execute(BUILD_VOTES.format(top_n=top_n))
     return con.execute("SELECT COUNT(*) FROM votes").fetchone()[0]

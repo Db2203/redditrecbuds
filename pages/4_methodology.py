@@ -86,8 +86,10 @@ st.markdown(
 
 5. **spread imprecise references**. when someone says "Galaxy Buds" with no version,
    i can't drop the data - but i shouldn't pin it on one specific buds model either.
-   i spread that user's vote across all known galaxy buds models, weighted by each
-   model's overall mention count (more popular = more likely the one being referred to).
+   i spread that user's vote across the **top 3 most-mentioned models of that brand**,
+   weighted by each model's overall mention count (more popular = more likely the one
+   being referred to). capping at top 3 prevents a single brand-only mention from
+   smearing across a long tail of obscure variants and creating phantom ties.
 
 6. **scored**. ranking is a weighted combination of two signals:
 

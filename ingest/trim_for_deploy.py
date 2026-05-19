@@ -54,7 +54,22 @@ def main():
         """
     )
 
-    for tbl in ("mentions", "votes", "pull_checkpoints"):
+    # pull_checkpoints needs an explicit PRIMARY KEY so the upserts in extract.py
+    # work after trim (CREATE TABLE AS doesn't carry the PK over).
+    try:
+        con.execute(
+            """CREATE TABLE pull_checkpoints (
+                source TEXT PRIMARY KEY,
+                last_after BIGINT,
+                finished BOOLEAN DEFAULT FALSE
+            )"""
+        )
+        con.execute("INSERT INTO pull_checkpoints SELECT * FROM src.pull_checkpoints")
+        print("copied pull_checkpoints")
+    except Exception as e:
+        print(f"skipping pull_checkpoints: {e}")
+
+    for tbl in ("mentions", "votes"):
         try:
             con.execute(f"CREATE TABLE {tbl} AS SELECT * FROM src.{tbl}")
             print(f"copied {tbl}")

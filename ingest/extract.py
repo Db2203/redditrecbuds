@@ -19,7 +19,9 @@ from lib.db import connect
 from lib.secrets import get as get_secret
 
 MIN_COMMENT_LEN = 80
-GEMINI_PER_KEY_INTERVAL = 4.5    # gemini: 15 rpm per key + buffer
+GEMINI_PER_KEY_INTERVAL = 6.0    # gemini: 15 rpm per key. 6s gives 10 rpm/key,
+                                 # 7 keys = ~70 rpm aggregate, well under any
+                                 # project-wide cap we've inferred.
 CEREBRAS_PER_KEY_INTERVAL = 2.1  # cerebras: 30 rpm per key + buffer
 GROQ_PACED_INTERVAL = 7.5        # groq: 6k tpm / ~800 tokens/call ≈ 8 calls/min
 
@@ -118,8 +120,13 @@ def run_paced_pool(extract_fn, per_key_interval, pool, prompt, pending,
     result_q = queue.Queue()
 
     stop_flag = threading.Event()
+    n_workers = len(pool)
+    # stagger startup: each worker waits (idx * interval / n) so we don't
+    # burst-fire all N first calls in the same instant.
+    stagger_step = per_key_interval / max(n_workers, 1)
 
-    def worker(key, sess):
+    def worker(key, sess, idx):
+        time.sleep(idx * stagger_step)
         last = 0.0
         while not stop_flag.is_set():
             item = work_q.get()
@@ -143,8 +150,8 @@ def run_paced_pool(extract_fn, per_key_interval, pool, prompt, pending,
                 result_q.put((cid, None, msg))
             last = time.time()
 
-    threads = [threading.Thread(target=worker, args=(k, s), daemon=True)
-               for k, s in pool]
+    threads = [threading.Thread(target=worker, args=(k, s, i), daemon=True)
+               for i, (k, s) in enumerate(pool)]
     for t in threads:
         t.start()
 
