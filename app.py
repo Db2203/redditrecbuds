@@ -11,7 +11,7 @@ from lib.ui import apply_theme
 st.set_page_config(page_title="redditrecbuds", layout="wide", initial_sidebar_state="collapsed")
 apply_theme()
 
-con = connect()
+con = connect(read_only=True)
 
 
 @st.cache_data

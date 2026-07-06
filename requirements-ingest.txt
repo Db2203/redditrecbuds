@@ -1,0 +1,11 @@
+# Offline data pipeline dependencies (Arctic Shift pull + LLM extraction + scoring).
+# These are only needed locally to (re)build data.duckdb. The Streamlit Cloud
+# deployment does NOT need them and should keep using requirements.txt only.
+#
+#   pip install -r requirements-ingest.txt   # installs runtime deps too
+-r requirements.txt
+requests==2.33.1
+groq==1.2.0
+google-generativeai==0.8.6
+sqlparse==0.5.5
+python-dotenv==1.2.2

@@ -1,0 +1,26 @@
+name: keep-awake
+
+# Streamlit Community Cloud puts an app to sleep after a stretch with no
+# traffic, so visitors hit a "wake this app up" screen. This workflow pings
+# the app on a schedule to keep it warm. Runs on GitHub's free tier.
+
+on:
+  schedule:
+    - cron: "0 */6 * * *"   # every 6 hours
+  workflow_dispatch:          # lets you trigger a ping manually from the Actions tab
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping the app
+        run: |
+          URL="https://redditrecbuds.streamlit.app"
+          echo "Pinging $URL"
+          # -L follows the sleep/auth redirect, --retry rides out slow wake-ups.
+          curl -sSL --retry 5 --retry-delay 15 --max-time 120 \
+            -o /dev/null -w "HTTP %{http_code} in %{time_total}s\n" \
+            "$URL/" || true
+          curl -sSL --retry 3 --retry-delay 10 --max-time 60 \
+            -o /dev/null -w "health: HTTP %{http_code}\n" \
+            "$URL/_stcore/health" || true

@@ -19,7 +19,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-con = connect()
+con = connect(read_only=True)
 
 USE_CASES = ["all", "general", "workout", "calls", "anc", "commute", "podcasts", "gaming", "audiophile"]
 

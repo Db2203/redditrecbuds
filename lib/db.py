@@ -54,7 +54,11 @@ CREATE TABLE IF NOT EXISTS mentions (
 """
 
 
-def connect(path=DB_PATH):
-    con = duckdb.connect(str(path))
-    con.execute(SCHEMA)
+def connect(path=DB_PATH, read_only=False):
+    # The deployed app is display-only: it opens the DB read-only so it never
+    # takes a write lock or writes a WAL file (which can corrupt on cloud restarts).
+    # The ingest pipeline uses the default read-write mode to build the tables.
+    con = duckdb.connect(str(path), read_only=read_only)
+    if not read_only:
+        con.execute(SCHEMA)
     return con

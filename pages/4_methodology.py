@@ -17,7 +17,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-con = connect()
+con = connect(read_only=True)
 
 n_posts = con.execute("SELECT COUNT(*) FROM posts").fetchone()[0]
 n_comments = con.execute("SELECT COUNT(*) FROM comments").fetchone()[0]

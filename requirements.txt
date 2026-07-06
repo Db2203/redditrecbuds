@@ -1,9 +1,8 @@
-streamlit>=1.30
-duckdb>=1.0
-plotly>=5.18
-pandas>=2.0
-requests>=2.31
-groq>=0.11
-google-generativeai>=0.7
-sqlparse>=0.4
-python-dotenv>=1.0
+# Runtime dependencies for the deployed Streamlit app (display-only).
+# Pinned to known-good versions so a redeploy always installs the exact
+# stack the app was tested against. Ingest/extraction deps live in
+# requirements-ingest.txt and are intentionally NOT installed on the server.
+streamlit==1.57.0
+duckdb==1.5.2
+pandas==2.3.3
+plotly==6.7.0

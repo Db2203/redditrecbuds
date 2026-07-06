@@ -19,7 +19,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-con = connect()
+con = connect(read_only=True)
 
 
 @st.cache_data
