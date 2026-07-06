@@ -76,6 +76,15 @@ def main():
         except Exception as e:
             print(f"skipping {tbl}: {e}")
 
+    # votes are already stored under canonical names; fold the mentions table onto
+    # the same names so the app's per-product quote/time/price lookups match.
+    try:
+        from lib.canonical import canonicalize_mentions_table
+        n = canonicalize_mentions_table(con)
+        print(f"canonicalized mentions ({n} variant names folded)")
+    except Exception as e:
+        print(f"skipping mention canonicalization: {e}")
+
     con.execute("DETACH src")
     con.close()
 

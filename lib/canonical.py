@@ -78,3 +78,28 @@ def canonical(brand, model):
         re.sub(r"[^a-z0-9]", "", model.lower()),
     )
     return CANONICAL_MERGES.get(key, (brand, model))
+
+
+def canonicalize_mentions_table(con):
+    """rewrite the persistent mentions table's (brand, model) to canonical names.
+
+    the votes table is built from canonicalized names, but the mentions table keeps
+    the raw extracted ones. the app pulls quotes / time-series / prices straight from
+    mentions using the canonical name it got from votes, so merged products (e.g.
+    "Bose QuietComfort", folded from "QC"/"Quietcomfort") would find no matching rows.
+    running this keeps both sides in agreement. idempotent.
+    """
+    pairs = con.execute(
+        "SELECT DISTINCT brand, model FROM mentions "
+        "WHERE brand IS NOT NULL AND model IS NOT NULL"
+    ).fetchall()
+    changed = 0
+    for brand, model in pairs:
+        c_brand, c_model = canonical(brand, model)
+        if (c_brand, c_model) != (brand, model):
+            con.execute(
+                "UPDATE mentions SET brand = ?, model = ? WHERE brand = ? AND model = ?",
+                [c_brand, c_model, brand, model],
+            )
+            changed += 1
+    return changed
